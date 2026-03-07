@@ -415,18 +415,24 @@ defmodule BinzPoker.Table do
         end)
         winners = Enum.reduce(pots, %{}, fn pot, acc ->
           eligible_hands = Enum.filter(evaluated, fn {id, _} -> id in pot.eligible end)
-          {_, best_eval} = Enum.max_by(eligible_hands, fn {_, e} -> {rank_val(e.rank), e.kickers} end)
-          tied = Enum.filter(eligible_hands, fn {_, e} ->
-            {rank_val(e.rank), e.kickers} == {rank_val(best_eval.rank), best_eval.kickers}
-          end)
-          share = div(pot.amount, length(tied))
-          remainder = rem(pot.amount, length(tied))
-          tied
-          |> Enum.with_index()
-          |> Enum.reduce(acc, fn {{id, _}, idx}, a ->
-            extra = if idx == 0, do: remainder, else: 0
-            Map.update(a, id, share + extra, &(&1 + share + extra))
-          end)
+          # Dead money: if no eligible non-folded players for this pot, give to best overall hand
+          contenders = if eligible_hands == [], do: Enum.to_list(evaluated), else: eligible_hands
+          if contenders == [] do
+            acc
+          else
+            {_, best_eval} = Enum.max_by(contenders, fn {_, e} -> {rank_val(e.rank), e.kickers} end)
+            tied = Enum.filter(contenders, fn {_, e} ->
+              {rank_val(e.rank), e.kickers} == {rank_val(best_eval.rank), best_eval.kickers}
+            end)
+            share = div(pot.amount, length(tied))
+            remainder = rem(pot.amount, length(tied))
+            tied
+            |> Enum.with_index()
+            |> Enum.reduce(acc, fn {{id, _}, idx}, a ->
+              extra = if idx == 0, do: remainder, else: 0
+              Map.update(a, id, share + extra, &(&1 + share + extra))
+            end)
+          end
         end)
         %{winners: winners, pots: pots, method: :showdown, hands: evaluated}
     end
