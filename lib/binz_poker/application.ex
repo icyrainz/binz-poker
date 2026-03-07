@@ -14,6 +14,7 @@ defmodule BinzPoker.Application do
        repos: Application.fetch_env!(:binz_poker, :ecto_repos), skip: skip_migrations?()},
       {DNSCluster, query: Application.get_env(:binz_poker, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: BinzPoker.PubSub},
+      {Finch, name: BinzPoker.Finch},
       # Start a worker by calling: BinzPoker.Worker.start_link(arg)
       # {BinzPoker.Worker, arg},
       # Start to serve requests, typically the last entry
