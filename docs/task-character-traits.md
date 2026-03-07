@@ -61,7 +61,8 @@ defmodule BinzPoker.Character do
     budget: 5.00, chips: 0,
     hands_played: 0, hands_won: 0,
     token_bill: 0.0, total_token_cost: 0.0,
-    total_winnings: 0.0, peak_budget: 5.00
+    total_winnings: 0.0, peak_budget: 5.00,
+    loans: []
   ]
 
   @traits [:aggression, :risk_tolerance, :discipline, :greed,
@@ -86,7 +87,8 @@ defmodule BinzPoker.Character do
         hands_won: 0,
         token_bill: 0.0,
         total_token_cost: 0.0,
-        total_winnings: 0.0
+        total_winnings: 0.0,
+        loans: []
       })
     )
   end

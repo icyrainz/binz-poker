@@ -23,6 +23,7 @@ defmodule BinzPoker.Application do
       BinzPokerWeb.Telemetry,
       {Phoenix.PubSub, name: BinzPoker.PubSub},
       {Finch, name: BinzPoker.Finch},
+      {Registry, keys: :unique, name: BinzPoker.PlayerRegistry},
 
       # Game processes (order matters — Sim depends on all three above it)
       # Note: Sim auto-creates or resumes a SimRecord on init (no sim_id needed here)

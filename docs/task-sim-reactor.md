@@ -27,6 +27,7 @@ defmodule BinzPoker.SimTest do
   alias BinzPoker.Schemas.{PlayerRecord, SimRecord}
 
   setup do
+    start_supervised!({Registry, keys: :unique, name: BinzPoker.PlayerRegistry})
     bank = start_supervised!({Bank, name: :"bank_#{System.unique_integer()}"})
     sup = start_supervised!({PlayerSupervisor,
       bank: bank,
@@ -155,7 +156,8 @@ defmodule BinzPoker.Sim do
     :bank, :player_supervisor, :table, :sim_id,
     max_players: 10, table_size: 6,
     player_states: %{},            # player_id => :seated | :away | :busted_awaiting_loan
-    hands_played: 0
+    hands_played: 0,
+    banker_mode: :auto             # :auto (v1: auto-approve loans) | :manual (v2: human/LLM decides)
   ]
 
   # ---- Client API ----
@@ -168,6 +170,7 @@ defmodule BinzPoker.Sim do
   def spawn_players(sim \\ __MODULE__, count), do: GenServer.call(sim, {:spawn_players, count})
   def get_status(sim \\ __MODULE__), do: GenServer.call(sim, :get_status)
   def resume_from_db(sim \\ __MODULE__), do: GenServer.call(sim, :resume_from_db)
+  def set_banker_mode(sim \\ __MODULE__, mode) when mode in [:auto, :manual], do: GenServer.call(sim, {:set_banker_mode, mode})
 
   # ---- Server ----
 
@@ -206,7 +209,9 @@ defmodule BinzPoker.Sim do
 
   @impl true
   def handle_call({:spawn_players, count}, _from, state) do
-    new_state = Enum.reduce(1..count, state, fn _, acc -> spawn_one(acc) end)
+    # Spawn all players first (as :away), then fill seats once
+    new_state = Enum.reduce(1..count, state, fn _, acc -> spawn_one_no_seat(acc) end)
+    new_state = fill_empty_seats(new_state)
     {:reply, :ok, new_state}
   end
 
@@ -220,6 +225,10 @@ defmodule BinzPoker.Sim do
       hands_played: state.hands_played,
       total_players: map_size(state.player_states)
     }, state}
+  end
+
+  def handle_call({:set_banker_mode, mode}, _from, state) do
+    {:reply, :ok, %{state | banker_mode: mode}}
   end
 
   def handle_call(:resume_from_db, _from, state) do
@@ -372,16 +381,8 @@ defmodule BinzPoker.Sim do
     new_states = Map.delete(state.player_states, player_id)
     state = %{state | player_states: new_states}
 
-    # The respawn created a new player — find and add it
-    players = PlayerSupervisor.list_players(state.player_supervisor)
-    new_player = Enum.find(players, fn p -> not Map.has_key?(state.player_states, p.id) end)
-
-    if new_player do
-      state = %{state | player_states: Map.put(state.player_states, new_player.id, :away)}
-      fill_empty_seats(state)
-    else
-      state
-    end
+    # Respawn created a new player — find, register, and try to seat
+    spawn_one_and_seat(state)
   end
 
   # ---- Private: Seating with Buy-In ----
@@ -429,24 +430,29 @@ defmodule BinzPoker.Sim do
     new_state
   end
 
-  defp spawn_one(state) do
+  # Spawn a player as :away without trying to seat them. Used by spawn_players batch.
+  defp spawn_one_no_seat(state) do
     total = map_size(state.player_states)
     if total >= state.max_players do
       state
     else
-      # Pass taken names to avoid duplicates
       taken = get_taken_names(state)
       {:ok, _pid} = PlayerSupervisor.spawn_player(state.player_supervisor, taken_names: taken)
       players = PlayerSupervisor.list_players(state.player_supervisor)
       newest = Enum.find(players, fn p -> not Map.has_key?(state.player_states, p.id) end)
 
       if newest do
-        state = %{state | player_states: Map.put(state.player_states, newest.id, :away)}
-        fill_empty_seats(state)
+        %{state | player_states: Map.put(state.player_states, newest.id, :away)}
       else
         state
       end
     end
+  end
+
+  # Spawn a player and immediately try to seat them. Used by eliminate_and_respawn.
+  defp spawn_one_and_seat(state) do
+    state = spawn_one_no_seat(state)
+    fill_empty_seats(state)
   end
 
   defp count_seated(state) do

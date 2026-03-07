@@ -18,6 +18,7 @@ defmodule BinzPoker.IntegrationTest do
   alias BinzPoker.Schemas.{PlayerRecord, SimRecord}
 
   setup do
+    start_supervised!({Registry, keys: :unique, name: BinzPoker.PlayerRegistry})
     bank = start_supervised!({Bank, name: :"bank_int_#{System.unique_integer()}"})
     sup = start_supervised!({PlayerSupervisor,
       bank: bank,

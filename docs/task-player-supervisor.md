@@ -20,6 +20,7 @@ defmodule BinzPoker.PlayerSupervisorTest do
   alias BinzPoker.Schemas.PlayerRecord
 
   setup do
+    start_supervised!({Registry, keys: :unique, name: BinzPoker.PlayerRegistry})
     bank = start_supervised!({Bank, name: :"bank_#{System.unique_integer()}"})
     sup = start_supervised!({PlayerSupervisor,
       bank: bank,
@@ -131,7 +132,11 @@ defmodule BinzPoker.PlayerSupervisor do
   end
 
   def handle_call({:get_player_pid, player_id}, _from, state) do
-    {:reply, Map.get(state.players, player_id), state}
+    pid = case Registry.lookup(BinzPoker.PlayerRegistry, player_id) do
+      [{pid, _}] -> pid
+      [] -> nil
+    end
+    {:reply, pid, state}
   end
 
   def handle_call({:eliminate_and_respawn, player_id}, _from, state) do

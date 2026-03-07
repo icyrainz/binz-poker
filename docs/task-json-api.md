@@ -130,12 +130,12 @@ defmodule BinzPokerWeb.BankerController do
   alias BinzPoker.Schemas.LoanRecord
 
   def set_auto(conn, _params) do
-    Sim.set_banker_mode(:auto)
+    Sim.set_banker_mode(BinzPoker.Sim, :auto)
     json(conn, %{mode: "auto", status: "ok"})
   end
 
   def set_manual(conn, _params) do
-    Sim.set_banker_mode(:manual)
+    Sim.set_banker_mode(BinzPoker.Sim, :manual)
     json(conn, %{mode: "manual", status: "ok"})
   end
 
@@ -150,8 +150,7 @@ defmodule BinzPokerWeb.BankerController do
   def approve_loan(conn, %{"id" => id}) do
     loan_id = String.to_integer(id)
     amount = Map.get(conn.body_params, "amount", 2.00)
-    rate = Map.get(conn.body_params, "interest_rate", 0.10)
-    case Bank.approve_loan(loan_id, amount, rate) do
+    case Bank.approve_loan(BinzPoker.Bank, loan_id, amount) do
       :ok -> json(conn, %{status: "approved"})
       {:error, reason} -> conn |> put_status(400) |> json(%{error: to_string(reason)})
     end
@@ -159,7 +158,7 @@ defmodule BinzPokerWeb.BankerController do
 
   def deny_loan(conn, %{"id" => id}) do
     loan_id = String.to_integer(id)
-    case Bank.deny_loan(loan_id) do
+    case Bank.deny_loan(BinzPoker.Bank, loan_id) do
       :ok -> json(conn, %{status: "denied"})
       {:error, reason} -> conn |> put_status(400) |> json(%{error: to_string(reason)})
     end
@@ -176,7 +175,7 @@ defmodule BinzPokerWeb.BankerController do
   end
 
   def kick(conn, %{"player_id" => player_id}) do
-    case PlayerSupervisor.eliminate_and_respawn(player_id) do
+    case PlayerSupervisor.eliminate_and_respawn(BinzPoker.PlayerSupervisor, player_id) do
       {:ok, _} -> json(conn, %{status: "kicked", player_id: player_id})
       {:error, reason} -> conn |> put_status(400) |> json(%{error: to_string(reason)})
     end

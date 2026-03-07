@@ -22,6 +22,9 @@ defmodule BinzPoker.PlayerTest do
   alias BinzPoker.Schemas.PlayerRecord
 
   setup do
+    # Start PlayerRegistry for name registration
+    start_supervised!({Registry, keys: :unique, name: BinzPoker.PlayerRegistry})
+
     # Create DB record first — Player loads from it
     {:ok, _record} = PlayerRecord.create(%{
       player_id: "p1",
@@ -130,7 +133,7 @@ defmodule BinzPoker.Player do
     GenServer.start_link(__MODULE__, opts, name: via(id))
   end
 
-  def via(id), do: {:global, {__MODULE__, id}}
+  def via(id), do: {:via, Registry, {BinzPoker.PlayerRegistry, id}}
 
   # Sync API
   def get_character(player), do: GenServer.call(player, :get_character)
@@ -246,7 +249,7 @@ defmodule BinzPoker.Player do
 
   defp atomize_trait_keys(traits) when is_map(traits) do
     Map.new(traits, fn
-      {k, v} when is_binary(k) -> {String.to_existing_atom(k), String.to_existing_atom(v)}
+      {k, v} when is_binary(k) -> {String.to_atom(k), String.to_atom(v)}
       {k, v} when is_atom(k) -> {k, v}
     end)
   end

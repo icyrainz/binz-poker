@@ -31,14 +31,16 @@ defmodule BinzPoker.TableTest do
       player_id: id, name: "Player #{id}", traits: %{}, model: "mock-model",
       status: "seated", chips: chips, budget: 5.00
     })
-    start_supervised!({Player,
+    start_supervised!({Player, [
       id: id,
-      decision_engine: BinzPoker.DecisionEngine.Random,
-      tick_ms: :disabled
-    }, id: String.to_atom(id))
+      decision_engine: BinzPoker.DecisionEngine.Random
+    ]}, id: String.to_atom(id))
   end
 
   setup do
+    # Start PlayerRegistry for name registration
+    start_supervised!({Registry, keys: :unique, name: BinzPoker.PlayerRegistry})
+
     # Spawn 3 test players
     pids = for i <- 1..3 do
       pid = spawn_test_player("p#{i}")
@@ -352,14 +354,28 @@ defmodule BinzPoker.Table do
     start_id = hand.seats[start_seat].player_id
     {before, rest} = Enum.split_while(ids, &(&1 != start_id))
     order = rest ++ before
-    do_betting_loop(hand, order, current_bet, round_bets, MapSet.new(), hand.big_blind)
+    do_betting_loop(hand, order, order, current_bet, round_bets, MapSet.new(), hand.big_blind)
   end
 
-  defp do_betting_loop(hand, order, current_bet, round_bets, acted, min_raise) do
-    case find_next_actor(hand, order, round_bets, current_bet, acted) do
-      nil ->
-        merge_bets(hand, round_bets)
-      player_id ->
+  # Walks `remaining` for the current sweep. When a raise happens, `remaining`
+  # resets to the full `order` (minus the raiser, who is already in `acted`).
+  # When `remaining` is exhausted and everyone has matched, the round ends.
+  defp do_betting_loop(hand, _order, [], _current_bet, round_bets, _acted, _min_raise) do
+    merge_bets(hand, round_bets)
+  end
+
+  defp do_betting_loop(hand, order, [player_id | rest], current_bet, round_bets, acted, min_raise) do
+    cond do
+      MapSet.member?(hand.folded, player_id) or MapSet.member?(hand.all_in, player_id) ->
+        # Skip folded/all-in players
+        do_betting_loop(hand, order, rest, current_bet, round_bets, acted, min_raise)
+
+      MapSet.member?(acted, player_id) and Map.get(round_bets, player_id, 0) >= current_bet ->
+        # Already acted and matched the bet — skip
+        do_betting_loop(hand, order, rest, current_bet, round_bets, acted, min_raise)
+
+      true ->
+        # This player needs to act
         pid = find_pid(hand, player_id)
         chips = hand.chip_stacks[player_id]
         my_bet = Map.get(round_bets, player_id, 0)
@@ -378,24 +394,21 @@ defmodule BinzPoker.Table do
           _ -> %{action: :fold, amount: 0}
         end
 
-        {hand, current_bet, round_bets, acted, min_raise} =
+        {hand, new_bet, round_bets, acted, min_raise} =
           apply_action(hand, player_id, decision, current_bet, round_bets, acted, min_raise)
 
         nf = Enum.count(Map.keys(hand.chip_stacks), fn id -> not MapSet.member?(hand.folded, id) end)
         if nf <= 1 do
           merge_bets(hand, round_bets)
         else
-          do_betting_loop(hand, order, current_bet, round_bets, acted, min_raise)
+          if new_bet > current_bet do
+            # Raise happened — restart sweep from the full order (raiser is in `acted`)
+            do_betting_loop(hand, order, order, new_bet, round_bets, acted, min_raise)
+          else
+            do_betting_loop(hand, order, rest, new_bet, round_bets, acted, min_raise)
+          end
         end
     end
-  end
-
-  defp find_next_actor(hand, order, round_bets, current_bet, acted) do
-    Enum.find(order, fn id ->
-      not MapSet.member?(hand.folded, id) and
-      not MapSet.member?(hand.all_in, id) and
-      (not MapSet.member?(acted, id) or Map.get(round_bets, id, 0) < current_bet)
-    end)
   end
 
   defp apply_action(hand, id, decision, current_bet, round_bets, acted, min_raise) do
@@ -529,7 +542,7 @@ end
 
 **Key design notes:**
 
-1. **Betting loop:** `do_betting_loop` is recursive. `find_next_actor` returns the first player who hasn't acted since last raise OR hasn't matched current bet. `nil` = round over.
+1. **Betting loop:** `do_betting_loop` walks `remaining` for the current sweep. When a raise happens, `remaining` resets to the full `order` so all players get a chance to respond. When `remaining` is exhausted and everyone has matched, the round ends.
 
 2. **Re-raises:** On raise, `acted` resets to `{raiser}` only. Everyone else must act again. No cap — true no-limit.
 
