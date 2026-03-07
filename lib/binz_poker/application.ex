@@ -8,16 +8,16 @@ defmodule BinzPoker.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      # Infrastructure
       BinzPokerWeb.Telemetry,
       BinzPoker.Repo,
       {Ecto.Migrator,
        repos: Application.fetch_env!(:binz_poker, :ecto_repos), skip: skip_migrations?()},
       {DNSCluster, query: Application.get_env(:binz_poker, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: BinzPoker.PubSub},
-      {Finch, name: BinzPoker.Finch},
-      # Start a worker by calling: BinzPoker.Worker.start_link(arg)
-      # {BinzPoker.Worker, arg},
-      # Start to serve requests, typically the last entry
+      {Finch, name: BinzPoker.Finch}
+    ] ++ game_children() ++ [
+      # Web — last entry
       BinzPokerWeb.Endpoint
     ]
 
@@ -33,6 +33,31 @@ defmodule BinzPoker.Application do
   def config_change(changed, _new, removed) do
     BinzPokerWeb.Endpoint.config_change(changed, removed)
     :ok
+  end
+
+  defp game_children do
+    if Application.get_env(:binz_poker, :start_game, false) do
+      [
+        {Registry, keys: :unique, name: BinzPoker.PlayerRegistry},
+        {BinzPoker.Bank, name: BinzPoker.Bank},
+        {BinzPoker.PlayerSupervisor,
+          name: BinzPoker.PlayerSupervisor,
+          bank: BinzPoker.Bank,
+          character_gen: Application.get_env(:binz_poker, :character_gen, BinzPoker.CharacterGen.Hardcoded),
+          decision_engine: Application.get_env(:binz_poker, :decision_engine, BinzPoker.DecisionEngine.Random)},
+        {BinzPoker.Table,
+          name: BinzPoker.Table,
+          hand_evaluator: Application.get_env(:binz_poker, :hand_evaluator, BinzPoker.HandEvaluator.Native),
+          auto_start: false},
+        {BinzPoker.Sim,
+          name: BinzPoker.Sim,
+          bank: BinzPoker.Bank,
+          player_supervisor: BinzPoker.PlayerSupervisor,
+          table: BinzPoker.Table}
+      ]
+    else
+      []
+    end
   end
 
   defp skip_migrations?() do

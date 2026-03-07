@@ -49,6 +49,9 @@ config :binz_poker, BinzPokerWeb.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :binz_poker, dev_routes: true
 
+# Start game processes in dev
+config :binz_poker, start_game: true
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 
