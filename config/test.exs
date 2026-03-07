@@ -31,3 +31,9 @@ config :binz_poker,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+config :binz_poker,
+  decision_engine: BinzPoker.DecisionEngine.Random,
+  llm_provider: BinzPoker.LLM.Mock,
+  character_gen: BinzPoker.CharacterGen.Hardcoded,
+  game_log: BinzPoker.GameLog.Logger
