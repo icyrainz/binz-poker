@@ -482,7 +482,14 @@ defmodule BinzPoker.Table do
           end
         end)
       eligible = active |> Map.keys() |> Enum.reject(&MapSet.member?(folded, &1))
-      do_build_pots(new_remaining, folded, [%{amount: pot_amount, eligible: eligible} | pots])
+
+      # Dead money: if no eligible players, merge into previous pot
+      if eligible == [] and pots != [] do
+        [prev | rest] = pots
+        do_build_pots(new_remaining, folded, [%{prev | amount: prev.amount + pot_amount} | rest])
+      else
+        do_build_pots(new_remaining, folded, [%{amount: pot_amount, eligible: eligible} | pots])
+      end
     end
   end
 

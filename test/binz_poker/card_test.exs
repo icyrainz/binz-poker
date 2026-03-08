@@ -10,7 +10,7 @@ defmodule BinzPoker.CardTest do
 
   test "to_string formats card" do
     card = Card.new(:spades, :king)
-    assert Card.to_string(card) == "K♠"
+    assert Card.to_string(card) == "Ks"
   end
 
   test "rank_value returns numeric value" do

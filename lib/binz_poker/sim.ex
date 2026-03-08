@@ -107,9 +107,24 @@ defmodule BinzPoker.Sim do
   # ---- Event handlers (PubSub) ----
 
   @impl true
-  def handle_info({:hand_result, _result}, state) do
+  def handle_info({:hand_result, result}, state) do
     new_hands = state.hands_played + 1
     SimRecord.increment_hand_count(state.sim_id)
+
+    # Update hands_played for all seated players, hands_won for winners
+    all_player_ids = Map.keys(state.player_states)
+      |> Enum.filter(fn id -> Map.get(state.player_states, id) == :seated end)
+    winner_ids = Map.keys(result.winners || %{})
+
+    Enum.each(all_player_ids, fn id ->
+      case PlayerRecord.get_by_player_id(id) do
+        nil -> :ok
+        record ->
+          updates = %{hands_played: record.hands_played + 1}
+          updates = if id in winner_ids, do: Map.put(updates, :hands_won, record.hands_won + 1), else: updates
+          PlayerRecord.update_fields(id, updates)
+      end
+    end)
 
     {:ok, settled} = Bank.settle_hand(state.bank)
 
@@ -288,7 +303,25 @@ defmodule BinzPoker.Sim do
             new_states = Map.put(acc.player_states, id, :seated)
             {%{acc | player_states: new_states}, seats - 1}
           else
-            {acc, seats}
+            # Budget too low to buy in — auto-loan
+            name = Player.get_character(pid).name
+            Logger.info("[SIM] #{name} can't buy in (budget $#{Float.round(budget, 4)}), auto-loaning $2.00")
+            {:ok, loan_id} = Bank.request_loan(acc.bank, id, 2.00, "Need buy-in money.")
+            Bank.approve_loan(acc.bank, loan_id, 2.00)
+            # After loan, try to seat them
+            {:ok, new_budget} = Bank.get_budget(acc.bank, id)
+            {:ok, buy_in_chips} = Player.request_buy_in(pid, new_budget)
+            max_chips = trunc(new_budget * 100)
+            buy_in_chips = min(buy_in_chips, max_chips)
+            buy_in_chips = max(buy_in_chips, 1)
+
+            Bank.buy_in(acc.bank, id, buy_in_chips)
+            Player.set_chips(pid, buy_in_chips)
+            Player.set_status(pid, :seated)
+            Table.request_seat(acc.table, id, pid)
+
+            new_states = Map.put(acc.player_states, id, :seated)
+            {%{acc | player_states: new_states}, seats - 1}
           end
         else
           {acc, seats}

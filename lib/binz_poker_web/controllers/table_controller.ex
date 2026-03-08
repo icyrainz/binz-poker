@@ -121,7 +121,6 @@ defmodule BinzPokerWeb.TableController do
       status: record.status,
       chips: record.chips,
       budget: record.budget,
-      token_bill: record.token_bill,
       total_token_cost: record.total_token_cost,
       total_winnings: record.total_winnings,
       peak_budget: record.peak_budget,
