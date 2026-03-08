@@ -3,8 +3,8 @@ defmodule BinzPoker.DecisionEngine.Random do
 
   @impl true
   def decide(game_state, _character) do
-    actions = [:fold, :call, :raise, :all_in]
-    action = Enum.random(actions)
+    available = Map.get(game_state, :available_actions, [:fold, :call, :raise, :all_in])
+    action = Enum.random(available)
     chips = Map.get(game_state, :player_chips, 0)
     min_raise = Map.get(game_state, :min_raise, 0)
 
@@ -19,7 +19,8 @@ defmodule BinzPoker.DecisionEngine.Random do
       action: action,
       amount: amount,
       reasoning: "Random decision.",
-      talk: ""
+      talk: "",
+      usage: %{input: Enum.random(80..300), output: Enum.random(30..120)}
     }}
   end
 
@@ -27,6 +28,6 @@ defmodule BinzPoker.DecisionEngine.Random do
   def buy_in(budget, _character) do
     max_chips = trunc(budget * 100)
     chips = max(1, trunc(max_chips * 0.6))
-    {:ok, chips}
+    {:ok, chips, %{input: Enum.random(50..150), output: Enum.random(20..60)}}
   end
 end

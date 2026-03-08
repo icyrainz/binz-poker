@@ -14,6 +14,8 @@ defmodule BinzPokerWeb.Router do
     get "/players/:player_id", TableController, :player
     get "/leaderboard", TableController, :leaderboard
     get "/sim/status", TableController, :sim_status
+    get "/hands", TableController, :hand_history
+    get "/hands/:hand_number", TableController, :hand_detail
 
     # Banker controls
     post "/banker/mode/auto", BankerController, :set_auto

@@ -52,8 +52,15 @@ config :binz_poker, dev_routes: true
 # Start game processes in dev
 config :binz_poker, start_game: true
 
+# Slow down game for dev observation (ms between each player action)
+config :binz_poker, action_delay_ms: 3000
+config :binz_poker, hand_delay_ms: 5000
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
+
+# Show info+ only (suppress debug SQL noise for readable game log)
+config :logger, level: :info
 
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.

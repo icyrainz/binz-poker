@@ -1,7 +1,7 @@
 defmodule BinzPoker.Player do
   use GenServer
 
-  alias BinzPoker.Character
+  alias BinzPoker.{Character, Bank}
   alias BinzPoker.Schemas.PlayerRecord
 
   defstruct [
@@ -99,12 +99,24 @@ defmodule BinzPoker.Player do
   def handle_call({:decide, game_state}, _from, state) do
     game_state_with_chips = Map.put(game_state, :player_chips, state.character.chips)
     result = state.decision_engine.decide(game_state_with_chips, state.character)
+    case result do
+      {:ok, %{usage: usage}} when is_map(usage) ->
+        Bank.record_token_cost(state.id, usage, state.character.model)
+      _ -> :ok
+    end
     {:reply, result, state}
   end
 
   def handle_call({:buy_in_decision, budget}, _from, state) do
-    result = state.decision_engine.buy_in(budget, state.character)
-    {:reply, result, state}
+    case state.decision_engine.buy_in(budget, state.character) do
+      {:ok, chips, usage} when is_map(usage) ->
+        Bank.record_token_cost(state.id, usage, state.character.model)
+        {:reply, {:ok, chips}, state}
+      {:ok, chips} ->
+        {:reply, {:ok, chips}, state}
+      other ->
+        {:reply, other, state}
+    end
   end
 
   @impl true

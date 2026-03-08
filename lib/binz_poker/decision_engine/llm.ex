@@ -45,13 +45,13 @@ defmodule BinzPoker.DecisionEngine.LLM do
     ]
 
     case LLM.chat(character.model, messages, max_tokens: 200) do
-      {:ok, %{content: content}} ->
+      {:ok, %{content: content, usage: usage}} ->
         case Jason.decode(content) do
           {:ok, %{"chips" => chips}} when is_integer(chips) ->
             max_chips = trunc(budget * 100)
-            {:ok, min(max(chips, 1), max_chips)}
+            {:ok, min(max(chips, 1), max_chips), usage}
           _ ->
-            {:ok, max(1, trunc(budget * 100 * 0.6))}
+            {:ok, max(1, trunc(budget * 100 * 0.6)), usage}
         end
 
       {:error, _} ->

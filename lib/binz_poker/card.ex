@@ -28,8 +28,8 @@ defmodule BinzPoker.Card do
   defp rank_str(:jack), do: "J"
   defp rank_str(n), do: Integer.to_string(n)
 
-  defp suit_str(:hearts), do: "♥"
-  defp suit_str(:diamonds), do: "♦"
-  defp suit_str(:clubs), do: "♣"
-  defp suit_str(:spades), do: "♠"
+  defp suit_str(:hearts), do: "h"
+  defp suit_str(:diamonds), do: "d"
+  defp suit_str(:clubs), do: "c"
+  defp suit_str(:spades), do: "s"
 end

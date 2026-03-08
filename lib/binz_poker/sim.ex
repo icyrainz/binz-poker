@@ -1,8 +1,9 @@
 defmodule BinzPoker.Sim do
   use GenServer
+  require Logger
 
   alias BinzPoker.{Table, Bank, PlayerSupervisor, Player}
-  alias BinzPoker.Schemas.{PlayerRecord, LeaderboardEntry, SimRecord}
+  alias BinzPoker.Schemas.{PlayerRecord, LeaderboardEntry, SimRecord, LoanRecord}
 
   defstruct [
     :bank, :player_supervisor, :table, :sim_id,
@@ -110,7 +111,25 @@ defmodule BinzPoker.Sim do
     new_hands = state.hands_played + 1
     SimRecord.increment_hand_count(state.sim_id)
 
-    Bank.settle_hand(state.bank)
+    {:ok, settled} = Bank.settle_hand(state.bank)
+
+    Logger.info("[HAND] --- BILLING ---")
+    max_name_len = Enum.reduce(settled, 0, fn {id, _}, acc ->
+      pid = PlayerSupervisor.get_player_pid(state.player_supervisor, id)
+      name = if pid, do: Player.get_character(pid).name, else: id
+      max(acc, String.length(name))
+    end)
+    Enum.each(settled, fn {id, entry} ->
+      pid = PlayerSupervisor.get_player_pid(state.player_supervisor, id)
+      name = if pid, do: Player.get_character(pid).name, else: id
+      padded = String.pad_trailing(name, max_name_len)
+      loans = LoanRecord.get_active_for_player(id)
+      debt = Enum.reduce(loans, 0.0, fn l, acc -> acc + (l.granted_amount || 0.0) end)
+      debt_str = if debt > 0, do: " | debt $#{Float.round(debt, 2)}", else: ""
+      budget_str = :io_lib.format("~8.4f", [entry.budget]) |> IO.iodata_to_binary()
+      cost_str = :io_lib.format("~7.4f", [entry.total_token_cost]) |> IO.iodata_to_binary()
+      Logger.info("[HAND]   #{padded}  budget $#{budget_str} | cost $#{cost_str}#{debt_str}")
+    end)
 
     {:ok, broke} = Bank.check_budget_broke(state.bank)
     state = Enum.reduce(broke, state, fn player_id, acc ->
@@ -122,12 +141,17 @@ defmodule BinzPoker.Sim do
 
   def handle_info({:player_busted, player_id}, state) do
     Bank.cash_out(state.bank, player_id, 0)
+    pid = PlayerSupervisor.get_player_pid(state.player_supervisor, player_id)
+    name = if pid, do: Player.get_character(pid).name, else: player_id
 
     {:ok, budget} = Bank.get_budget(state.bank, player_id)
 
-    state = if budget > 0 do
+    min_buy_in_budget = 0.01
+    state = if budget >= min_buy_in_budget do
+      Logger.info("[SIM] #{name} busted! Has $#{Float.round(budget, 4)} budget left, will rebuy.")
       %{state | player_states: Map.put(state.player_states, player_id, :away)}
     else
+      Logger.info("[SIM] #{name} busted & broke ($#{Float.round(budget, 6)})! Auto-loaning $2.00")
       {:ok, loan_id} = Bank.request_loan(state.bank, player_id, 2.00, "I need to get back in the game.")
       Bank.approve_loan(state.bank, loan_id, 2.00)
       %{state | player_states: Map.put(state.player_states, player_id, :away)}
@@ -249,7 +273,8 @@ defmodule BinzPoker.Sim do
         pid = PlayerSupervisor.get_player_pid(acc.player_supervisor, id)
         if pid do
           {:ok, budget} = Bank.get_budget(acc.bank, id)
-          if budget > 0 do
+          min_buy_in_budget = 0.01
+          if budget >= min_buy_in_budget do
             {:ok, buy_in_chips} = Player.request_buy_in(pid, budget)
             max_chips = trunc(budget * 100)
             buy_in_chips = min(buy_in_chips, max_chips)
